@@ -46,16 +46,23 @@ const DEFAULT_RISK_PATTERNS = [
   { pattern: /:\(\)\{\s*:\|:&\s*\};:/i, desc: 'Fork bomb' }
 ];
 
+const logFile = path.join(__dirname, '..', 'audit.log');
+
+function recordLog(cmd, decision, reason) {
+  try {
+    const entry = `[${new Date().toISOString()}] [${decision.toUpperCase()}] ${cmd.slice(0, 120)} -> ${reason}\n`;
+    fs.appendFileSync(logFile, entry, 'utf8');
+  } catch (e) {}
+}
+
 function loadConfig() {
   try {
     const configPath = path.join(__dirname, '..', 'config.json');
     if (fs.existsSync(configPath)) {
       return JSON.parse(fs.readFileSync(configPath, 'utf8'));
     }
-  } catch (e) {
-    // ignore, use defaults
-  }
-  return { enabled: true, mode: 'auto' };
+  } catch (e) {}
+  return { enabled: true };
 }
 
 function audit(commandLine, config) {
@@ -74,9 +81,7 @@ function audit(commandLine, config) {
             reason: `[Auto-Perm] 命中自定义敏感规则: ${item.desc || item.pattern}`
           };
         }
-      } catch (err) {
-        // invalid regex, ignore
-      }
+      } catch (err) {}
     }
   }
 
@@ -122,18 +127,19 @@ function main() {
         
         if (config.enabled === false) {
           // If disabled, fall back to standard ask
-          console.log(JSON.stringify({ decision: 'ask', reason: 'Plugin is disabled.' }));
+          const res = { decision: 'ask', reason: '[Auto-Perm 暂停状态] 插件已手动关闭，全部指令回退至人工确认。' };
+          recordLog(commandLine, 'ask', 'Plugin disabled by user');
+          console.log(JSON.stringify(res));
           return;
         }
 
         const result = audit(commandLine, config);
+        recordLog(commandLine, result.decision, result.reason);
         console.log(JSON.stringify(result));
       } else {
-        // Other tools: allow
         console.log(JSON.stringify({ decision: 'allow' }));
       }
     } catch (err) {
-      // In case of any unexpected JSON parsing or execution error, fallback to 'ask' for safety
       console.log(JSON.stringify({
         decision: 'ask',
         reason: `[Auto-Perm 异常回退] 审计处理发生错误: ${err.message}`

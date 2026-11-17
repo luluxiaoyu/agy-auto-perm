@@ -1,5 +1,12 @@
 {
   "win-auto-perm": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node scripts/session_start.js",
+        "timeout": 5
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "run_command",
