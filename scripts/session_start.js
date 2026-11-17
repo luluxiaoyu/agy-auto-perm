@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * SessionStart Hook for win-auto-perm
- * Injects a visual badge/status notice into the chat window when a new session starts.
+ * Injects a status notice into the chat window when a new session starts.
  */
 
 const fs = require('fs');
@@ -21,13 +21,13 @@ function main() {
     } catch (e) {}
 
     const isEnabled = config.enabled !== false;
-    const statusText = isEnabled ? '🟢 已生效 (安全指令自动放行)' : '⚪ 已暂停 (全部指令需人工确认)';
+    const statusText = isEnabled ? '[已生效 - 安全指令自动放行]' : '[已暂停 - 全部指令人工确认]';
 
     const userMarkdown = [
-      `🛡️ **[Auto-Perm] Windows 指令审核状态**: ${statusText}`,
-      `- **运行模式**: Windows 11 < 24H2 智能审计平替`,
-      `- **快捷开关**: 直接对我说 \`关闭 auto-perm\` 或 \`开启 auto-perm\``,
-      `- **管理入口**: [插件详情](customization://win-auto-perm) · [控制面板](sidecar://win-auto-perm/panel/)`
+      `**[Auto-Perm 状态]**: ${statusText}`,
+      `- 运行模式: Windows 11 24H2 以下系统指令自动放行平替`,
+      `- 快捷指令: 在对话中发送 "关闭 auto-perm" 或 "开启 auto-perm"`,
+      `- 控制入口: [插件详情](customization://win-auto-perm) | [控制面板](sidecar://win-auto-perm/panel/)`
     ].join('\n');
 
     const output = {
