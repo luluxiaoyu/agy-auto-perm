@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "description": "Windows pre-24H2 Auto 模式平替审核配置",
+  "customRiskPatterns": [
+    {
+      "pattern": "drop\\s+database",
+      "desc": "SQL 删库指令"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "win-auto-perm",
+  "displayName": "Windows Auto-Audit Permission Hook",
+  "description": "Simulates Auto mode on Windows systems (< 24H2) without sandbox support by automatically auditing and approving safe commands while gating destructive actions.",
+  "version": "1.0.0",
+  "author": {
+    "name": "luluxiaoyu"
+  },
+  "repository": "https://github.com/luluxiaoyu/agy-auto-perm"
+}
