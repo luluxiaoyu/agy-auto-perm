@@ -48,9 +48,20 @@ const DEFAULT_RISK_PATTERNS = [
 
 const logFile = path.join(__dirname, '..', 'audit.log');
 
+function formatLocalTime(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = d.getFullYear();
+  const m = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mm = pad(d.getMinutes());
+  const ss = pad(d.getSeconds());
+  return `${y}-${m}-${day} ${hh}:${mm}:${ss}`;
+}
+
 function recordLog(cmd, decision, reason) {
   try {
-    const entry = `[${new Date().toISOString()}] [${decision.toUpperCase()}] ${cmd.slice(0, 120)} -> ${reason}\n`;
+    const entry = `[${formatLocalTime()}] [${decision.toUpperCase()}] ${cmd.slice(0, 120)} -> ${reason}\n`;
     fs.appendFileSync(logFile, entry, 'utf8');
   } catch (e) {}
 }

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Auto-Perm 控制面板</title>
   <style>
     :root {
@@ -34,22 +34,26 @@
         --danger-bg: #fef2f2;
       }
     }
+    
     * {
-      box-sizing: border-box;
+      box-sizing: border-box !important;
       margin: 0;
       padding: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
+
+    /* Completely forbid horizontal scrollbars anywhere in this document */
     html, body {
-      width: 100%;
-      max-width: 100%;
-      overflow-x: hidden;
+      width: 100% !important;
+      max-width: 100vw !important;
+      overflow-x: hidden !important;
       background: var(--bg);
       color: var(--text);
     }
+    
     body {
-      padding: 14px;
-      line-height: 1.5;
+      padding: 12px;
+      line-height: 1.45;
       font-size: 13px;
     }
     
@@ -57,17 +61,17 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
+      width: 100%;
+      overflow-x: hidden;
     }
     .title-group {
       display: flex;
       align-items: center;
-      gap: 6px;
     }
     h1 {
       font-size: 15px;
       font-weight: 600;
-      letter-spacing: -0.01em;
     }
     .badge {
       padding: 2px 7px;
@@ -75,6 +79,7 @@
       font-size: 11px;
       font-weight: 500;
       white-space: nowrap;
+      flex-shrink: 0;
     }
     .badge.active { background: var(--success-bg); color: var(--success); }
     .badge.inactive { background: var(--danger-bg); color: var(--danger); }
@@ -83,11 +88,11 @@
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: 10px;
-      padding: 14px;
+      padding: 12px;
       margin-bottom: 12px;
-      width: 100%;
-      max-width: 100%;
-      overflow: hidden;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow-x: hidden !important;
       box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }
     
@@ -95,17 +100,18 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
+      width: 100%;
     }
     .switch-label {
       font-weight: 600;
-      font-size: 13.5px;
+      font-size: 13px;
     }
     .switch-sub {
       color: var(--text-muted);
-      font-size: 12px;
+      font-size: 11.5px;
       margin-top: 2px;
-      line-height: 1.4;
+      line-height: 1.35;
     }
 
     /* Switch Styling */
@@ -156,40 +162,47 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 10px;
+      width: 100%;
     }
     .logs-title {
       font-weight: 600;
       font-size: 13px;
     }
+    
+    /* Log List Container - Strictly no horizontal scroll */
     .log-list {
-      max-height: 300px;
-      overflow-y: auto;
-      overflow-x: hidden;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      width: 100%;
+      display: block !important;
+      max-height: 320px;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      width: 100% !important;
+      max-width: 100% !important;
     }
+
     .log-item {
+      display: block !important;
       background: var(--bg);
       border: 1px solid var(--card-border);
       border-radius: 6px;
       padding: 8px 10px;
-      font-size: 11px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      width: 100%;
-      max-width: 100%;
-      word-break: break-all;
-      overflow-wrap: anywhere;
-      white-space: normal;
+      margin-bottom: 8px;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow-x: hidden !important;
+      word-break: break-all !important;
+      overflow-wrap: anywhere !important;
+      white-space: normal !important;
     }
+    .log-item:last-child {
+      margin-bottom: 0;
+    }
+
     .log-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      margin-bottom: 4px;
+      width: 100%;
     }
     .log-tag {
       font-weight: 600;
@@ -209,15 +222,16 @@
       color: var(--text);
       font-size: 11px;
       line-height: 1.4;
-      word-break: break-all;
-      overflow-wrap: anywhere;
+      margin-bottom: 3px;
+      word-break: break-all !important;
+      overflow-wrap: anywhere !important;
     }
     .log-reason {
       color: var(--text-muted);
       font-size: 10.5px;
       line-height: 1.35;
-      word-break: break-all;
-      overflow-wrap: anywhere;
+      word-break: break-all !important;
+      overflow-wrap: anywhere !important;
     }
     .empty-logs {
       color: var(--text-muted);
@@ -226,16 +240,21 @@
       font-size: 12px;
     }
 
-    /* Scrollbar styling */
-    ::-webkit-scrollbar {
-      width: 4px;
-      height: 0px;
+    /* Never render horizontal scrollbars */
+    *::-webkit-scrollbar:horizontal {
+      display: none !important;
+      height: 0px !important;
+      width: 0px !important;
     }
-    ::-webkit-scrollbar-thumb {
+    /* Sleek vertical scrollbar */
+    *::-webkit-scrollbar:vertical {
+      width: 4px;
+    }
+    *::-webkit-scrollbar-thumb {
       background: rgba(128, 128, 128, 0.25);
       border-radius: 4px;
     }
-    ::-webkit-scrollbar-thumb:hover {
+    *::-webkit-scrollbar-thumb:hover {
       background: rgba(128, 128, 128, 0.45);
     }
   </style>
@@ -276,6 +295,24 @@
   </div>
 
   <script>
+    function formatToLocal(timeStr) {
+      if (!timeStr) return '';
+      // If it's UTC ISO (contains 'T')
+      if (timeStr.includes('T')) {
+        const d = new Date(timeStr);
+        if (!isNaN(d.getTime())) {
+          const pad = n => String(n).padStart(2, '0');
+          return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+      }
+      // If it's already local "YYYY-MM-DD HH:mm:ss"
+      if (timeStr.includes(' ')) {
+        const parts = timeStr.split(' ');
+        return parts[1] || timeStr;
+      }
+      return timeStr;
+    }
+
     async function refreshData() {
       try {
         const res = await fetch('/api/status');
@@ -304,16 +341,16 @@
             const tagClass = isAllow ? 'tag-allow' : 'tag-ask';
             const tagText = isAllow ? '放行' : '拦截';
             
-            // Parse line: [ISO_TIME] [TYPE] CMD -> REASON
+            // Match pattern: [TIME] [TYPE] CMD -> REASON
             const match = line.match(/^\[(.*?)\]\s*\[(ALLOW|ASK)\]\s*(.*?)\s*->\s*(.*)$/);
             if (match) {
-              const [, timeStr, , cmd, reason] = match;
-              const time = timeStr.includes('T') ? timeStr.split('T')[1].replace('Z', '').slice(0, 8) : timeStr;
+              const [, rawTime, , cmd, reason] = match;
+              const displayTime = formatToLocal(rawTime);
               return `
                 <div class="log-item">
                   <div class="log-top">
                     <span class="log-tag ${tagClass}">${tagText}</span>
-                    <span class="log-time">${escapeHtml(time)}</span>
+                    <span class="log-time">${escapeHtml(displayTime)}</span>
                   </div>
                   <div class="log-cmd">${escapeHtml(cmd)}</div>
                   <div class="log-reason">${escapeHtml(reason)}</div>
