@@ -336,28 +336,42 @@
 
         const logContainer = document.getElementById('logList');
         if (Array.isArray(data.logs) && data.logs.length > 0) {
-          logContainer.innerHTML = data.logs.map(line => {
-            const isAllow = line.includes('[ALLOW]');
+          logContainer.innerHTML = data.logs.map(item => {
+            let isAllow = false;
+            let displayTime = '';
+            let cmd = '';
+            let reason = '';
+
+            if (typeof item === 'object' && item !== null) {
+              isAllow = item.decision === 'allow';
+              displayTime = formatToLocal(item.time || '');
+              cmd = item.cmd || '';
+              reason = item.reason || '';
+            } else if (typeof item === 'string') {
+              isAllow = item.includes('[ALLOW]');
+              const match = item.match(/^\[(.*?)\]\s*\[(ALLOW|ASK)\]\s*(.*?)\s*->\s*(.*)$/);
+              if (match) {
+                displayTime = formatToLocal(match[1]);
+                cmd = match[3];
+                reason = match[4];
+              } else {
+                cmd = item;
+              }
+            }
+
             const tagClass = isAllow ? 'tag-allow' : 'tag-ask';
             const tagText = isAllow ? '放行' : '拦截';
-            
-            // Match pattern: [TIME] [TYPE] CMD -> REASON
-            const match = line.match(/^\[(.*?)\]\s*\[(ALLOW|ASK)\]\s*(.*?)\s*->\s*(.*)$/);
-            if (match) {
-              const [, rawTime, , cmd, reason] = match;
-              const displayTime = formatToLocal(rawTime);
-              return `
-                <div class="log-item">
-                  <div class="log-top">
-                    <span class="log-tag ${tagClass}">${tagText}</span>
-                    <span class="log-time">${escapeHtml(displayTime)}</span>
-                  </div>
-                  <div class="log-cmd">${escapeHtml(cmd)}</div>
-                  <div class="log-reason">${escapeHtml(reason)}</div>
+
+            return `
+              <div class="log-item">
+                <div class="log-top">
+                  <span class="log-tag ${tagClass}">${tagText}</span>
+                  <span class="log-time">${escapeHtml(displayTime)}</span>
                 </div>
-              `;
-            }
-            return `<div class="log-item"><span class="log-tag ${tagClass}">${tagText}</span><span class="log-cmd">${escapeHtml(line)}</span></div>`;
+                <div class="log-cmd">${escapeHtml(cmd)}</div>
+                ${reason ? `<div class="log-reason">${escapeHtml(reason)}</div>` : ''}
+              </div>
+            `;
           }).join('');
         } else {
           logContainer.innerHTML = '<div class="empty-logs">暂无命令审计记录</div>';

@@ -4,8 +4,8 @@
  * 
  * Simulates "Auto" mode on Windows systems (< 24H2) without sandbox support.
  * Audits commands before execution:
- * - Safe commands: outputs {"decision": "allow"} -> runs automatically without prompt.
- * - Dangerous/destructive commands: outputs {"decision": "ask"} -> prompts user for confirmation.
+ * - Safe commands: outputs {"decision": "allow", "allowTool": true, "permissionOverrides": [...]} -> runs automatically without prompt.
+ * - Dangerous/destructive commands: outputs {"decision": "force_ask"} -> forces user confirmation regardless of mode.
  */
 
 const fs = require('fs');
@@ -61,8 +61,13 @@ function formatLocalTime(d = new Date()) {
 
 function recordLog(cmd, decision, reason) {
   try {
-    const entry = `[${formatLocalTime()}] [${decision.toUpperCase()}] ${cmd.slice(0, 120)} -> ${reason}\n`;
-    fs.appendFileSync(logFile, entry, 'utf8');
+    const logItem = {
+      time: formatLocalTime(),
+      decision: decision === 'force_ask' ? 'ask' : decision,
+      cmd: typeof cmd === 'string' ? cmd.trim().slice(0, 500) : '',
+      reason: reason || ''
+    };
+    fs.appendFileSync(logFile, JSON.stringify(logItem) + '\n', 'utf8');
   } catch (e) {}
 }
 
@@ -78,7 +83,7 @@ function loadConfig() {
 
 function audit(commandLine, config) {
   if (!commandLine || typeof commandLine !== 'string') {
-    return { decision: 'allow', reason: 'Empty command line' };
+    return { decision: 'allow', allowTool: true, reason: 'Empty command line' };
   }
 
   // Check custom blacklist first
@@ -88,7 +93,7 @@ function audit(commandLine, config) {
         const regex = new RegExp(item.pattern, 'i');
         if (regex.test(commandLine)) {
           return {
-            decision: 'ask',
+            decision: 'force_ask',
             reason: `[Auto-Perm] 命中自定义敏感规则: ${item.desc || item.pattern}`
           };
         }
@@ -100,15 +105,23 @@ function audit(commandLine, config) {
   for (const item of DEFAULT_RISK_PATTERNS) {
     if (item.pattern.test(commandLine)) {
       return {
-        decision: 'ask',
-        reason: `[Auto-Perm 安全防护] 检测到高危操作 (${item.desc})，在非沙盒 Windows 环境下需要人工审批。`
+        decision: 'force_ask',
+        reason: `[Auto-Perm 安全防护] 检测到高危操作 (${item.desc})，在非沙盒 Windows 环境下强制人工审批。`
       };
     }
   }
 
-  // If safe, auto-allow!
+  // If safe, auto-allow with permission grant overrides
+  const cmdTrim = commandLine.trim();
+  const firstWord = cmdTrim.split(/\s+/)[0];
   return {
     decision: 'allow',
+    allowTool: true,
+    permissionOverrides: [
+      `command(${cmdTrim})`,
+      `command(${firstWord})`,
+      'command(*)'
+    ],
     reason: '[Auto-Perm 智能放行] 指令已通过安全审计，非高危操作，自动批准执行。'
   };
 }
@@ -124,7 +137,7 @@ function main() {
   process.stdin.on('end', () => {
     try {
       if (!inputData.trim()) {
-        console.log(JSON.stringify({ decision: 'allow' }));
+        console.log(JSON.stringify({ decision: 'allow', allowTool: true }));
         return;
       }
 
@@ -137,8 +150,7 @@ function main() {
         const config = loadConfig();
         
         if (config.enabled === false) {
-          // If disabled, fall back to standard ask
-          const res = { decision: 'ask', reason: '[Auto-Perm 暂停状态] 插件已手动关闭，全部指令回退至人工确认。' };
+          const res = { decision: 'force_ask', reason: '[Auto-Perm 暂停状态] 插件已手动关闭，全部指令回退至人工确认。' };
           recordLog(commandLine, 'ask', 'Plugin disabled by user');
           console.log(JSON.stringify(res));
           return;
@@ -148,11 +160,11 @@ function main() {
         recordLog(commandLine, result.decision, result.reason);
         console.log(JSON.stringify(result));
       } else {
-        console.log(JSON.stringify({ decision: 'allow' }));
+        console.log(JSON.stringify({ decision: 'allow', allowTool: true }));
       }
     } catch (err) {
       console.log(JSON.stringify({
-        decision: 'ask',
+        decision: 'force_ask',
         reason: `[Auto-Perm 异常回退] 审计处理发生错误: ${err.message}`
       }));
     }

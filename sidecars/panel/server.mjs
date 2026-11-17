@@ -28,7 +28,32 @@ function readLogs() {
   try {
     if (existsSync(logFile)) {
       const raw = readFileSync(logFile, 'utf8');
-      return raw.trim().split('\n').slice(-30).reverse();
+      const lines = raw.trim().split('\n').filter(Boolean);
+      const results = [];
+      
+      for (let i = lines.length - 1; i >= 0 && results.length < 30; i--) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed && typeof parsed === 'object') {
+            results.push(parsed);
+            continue;
+          }
+        } catch (e) {}
+        
+        // Backward compatibility for legacy string logs
+        const match = line.match(/^\[(.*?)\]\s*\[(ALLOW|ASK)\]\s*(.*?)\s*->\s*(.*)$/);
+        if (match) {
+          results.push({
+            time: match[1],
+            decision: match[2].toLowerCase(),
+            cmd: match[3],
+            reason: match[4]
+          });
+        }
+      }
+      return results;
     }
   } catch (e) {}
   return [];
