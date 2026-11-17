@@ -15,11 +15,13 @@ Antigravity 平台专用的权限生命周期钩子插件，专为 **Windows 10*
 
 ## 解决方案
 
-本插件利用 Antigravity 官方扩展体系中的 **Lifecycle Hook (`PreToolUse`)** 机制：
-- 将 UI 权限模式保持在 **Request Review** 或 **Default**。
+本插件利用 Antigravity 官方扩展体系中的 **Lifecycle Hook (`PreToolUse`)** 机制，与客户端的 **Turbo** 模式协同工作：
+- 用户在底栏将权限模式切换为 **Turbo**（避开 Request Review 模式下的每步弹窗痛点）。
 - 每次 Agent 调用 `run_command` 时，插件自动进行安全审计：
-  - **常规安全指令**（编译、测试、状态查询、查看代码等）：直接返回 `decision: "allow"`，自动放行无需人工点击！
-  - **高危破坏性指令**（`del /s /q`、`rmdir /s /q`、`rm -rf`、格式化硬盘、修改注册表、`git reset --hard` 等）：返回 `decision: "ask"`，触发弹窗提醒用户审批。
+  - **常规安全指令**（编译、测试、状态查询、查看代码等）：Hook 判定安全放行，指令在 Turbo 模式下静默自动执行，体验与原生 Auto 模式完全一致！
+  - **高危破坏性指令**（`del /s /q`、`rmdir /s /q`、`rm -rf`、格式化硬盘、修改注册表、`git reset --hard` 等）：Hook 立即下发 `decision: "force_ask"`，强行越级打断 Turbo 模式，弹窗提示用户人工审批，防止误删文件或损毁系统。
+
+即：**Turbo 模式 + win-auto-perm = 专属于非 24H2 Windows 的安全模拟 Auto 模式**。
 
 > [!WARNING]
 > **风险自负提示**：在低于 24H2 的 Windows 上运行命令时并没有 OS 级沙盒隔离，本插件通过模式规则智能过滤高危指令，大幅提升日常流畅度，但用户仍需对自己在终端执行的命令负责。
