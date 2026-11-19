@@ -130,11 +130,10 @@ function auditWithAgy(commandLine, initialReason, config = {}) {
     '-p', prompt,
     '--disable-slash-commands',
     '--dangerously-skip-permissions',
-    '--effort', 'low',
     '--print-timeout', '10s'
   ];
 
-  if (config.agyModel) {
+  if (config.agyModel && config.agyModel !== 'auto') {
     args.push('--model', config.agyModel);
   }
 
@@ -166,16 +165,17 @@ function auditWithAgy(commandLine, initialReason, config = {}) {
       };
     }
   } catch (err) {
-    const stderr = err.stderr ? err.stderr.toString() : '';
+    const stderr = err.stderr ? err.stderr.toString().trim() : '';
     if (stderr.includes('Authentication required')) {
       return {
         decision: 'force_ask',
         reason: '[AGY 未登录] 本机 agy 尚未完成认证，请在终端执行 agy 登录。已安全回退至人工审批。'
       };
     }
+    const cleanErr = stderr ? stderr.split('\n').filter(Boolean).pop() : (err.message || '超时或执行失败');
     return {
       decision: 'force_ask',
-      reason: `[AGY 审核回退] AGY 仲裁超时或异常: ${err.message}`
+      reason: `[AGY 审核回退] ${cleanErr}`
     };
   }
 }
