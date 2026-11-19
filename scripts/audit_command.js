@@ -109,7 +109,7 @@ function findAgy() {
   return null;
 }
 
-function auditWithAgy(commandLine, initialReason) {
+function auditWithAgy(commandLine, initialReason, config = {}) {
   const agyPath = findAgy();
   if (!agyPath) return null;
 
@@ -126,13 +126,20 @@ function auditWithAgy(commandLine, initialReason) {
     'REASON: [One sentence in Chinese explaining why]'
   ].join('\n');
 
+  const args = [
+    '-p', prompt,
+    '--disable-slash-commands',
+    '--dangerously-skip-permissions',
+    '--effort', 'low',
+    '--print-timeout', '10s'
+  ];
+
+  if (config.agyModel) {
+    args.push('--model', config.agyModel);
+  }
+
   try {
-    const stdout = execFileSync(agyPath, [
-      '-p', prompt,
-      '--disable-slash-commands',
-      '--dangerously-skip-permissions',
-      '--print-timeout', '10s'
-    ], {
+    const stdout = execFileSync(agyPath, args, {
       encoding: 'utf8',
       timeout: 12000,
       env: {
@@ -206,7 +213,7 @@ function audit(commandLine, config) {
   // If a risk rule was triggered, check if AGY secondary audit is enabled
   if (ruleTriggered) {
     if (config.agyAuditEnabled === true) {
-      const agyResult = auditWithAgy(commandLine, ruleTriggered);
+      const agyResult = auditWithAgy(commandLine, ruleTriggered, config);
       if (agyResult) {
         if (agyResult.decision === 'allow') {
           const cmdTrim = commandLine.trim();
