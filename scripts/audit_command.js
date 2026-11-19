@@ -17,7 +17,7 @@ const DEFAULT_RISK_PATTERNS = [
   { pattern: /\b(del|erase)\b.*[\/\-](s|q)/i, desc: 'Recursive or quiet file deletion (del /s /q)' },
   { pattern: /\b(rmdir|rd)\b.*[\/\-](s|q)/i, desc: 'Recursive directory removal (rmdir /s /q)' },
   { pattern: /\bRemove-Item\b.*[\/\-](Recurse|Force)/i, desc: 'PowerShell recursive removal' },
-  { pattern: /\b(format|diskpart|Format-Volume)\b/i, desc: 'Disk partitioning or formatting' },
+  { pattern: /\b(diskpart|Format-Volume)\b|\bformat(?:\.exe)?\s+[a-zA-Z]:/i, desc: 'Disk partitioning or formatting' },
   
   // Unix/WSL/Bash destructive commands
   { pattern: /\brm\b\s+-[a-zA-Z]*[rf][a-zA-Z]*\s+/i, desc: 'Recursive forced removal (rm -rf)' },
