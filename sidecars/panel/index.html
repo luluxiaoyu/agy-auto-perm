@@ -378,6 +378,7 @@
           }
         }
 
+        window.lastAvailableModels = data.availableModels;
         updateModelOptions(data.availableModels, data.agyModel || 'auto');
 
         const logContainer = document.getElementById('logList');
@@ -487,11 +488,21 @@
     async function changeModel(val) {
       if (!val) return;
       try {
-        await fetch('/api/set-model', {
+        const select = document.getElementById('modelSelect');
+        if (select) select.value = val;
+
+        const url = `/api/set-model?model=${encodeURIComponent(val)}`;
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ model: val })
         });
+        if (res.ok) {
+          const result = await res.json();
+          if (result && result.agyModel) {
+            updateModelOptions(window.lastAvailableModels, result.agyModel);
+          }
+        }
         await refreshData();
       } catch (e) {}
     }

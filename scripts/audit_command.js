@@ -109,6 +109,47 @@ function findAgy() {
   return null;
 }
 
+function normalizeModelId(name) {
+  if (!name || typeof name !== 'string') return 'auto';
+  const clean = name.trim();
+  
+  const KNOWN_MAP = {
+    'gpt-oss 120b (medium)': 'gpt-oss-120b-medium',
+    'gpt-oss-120b (medium)': 'gpt-oss-120b-medium',
+    'gpt-oss 120b': 'gpt-oss-120b-medium',
+    'gemini 3.8 flash (high)': 'gemini-3.8-flash-high',
+    'gemini 3.8 flash (medium)': 'gemini-3.8-flash-medium',
+    'gemini 3.8 flash (low)': 'gemini-3.8-flash-low',
+    'claude sonnet 4.6': 'claude-sonnet-4-6',
+    'claude sonnet 4.6 (thinking)': 'claude-sonnet-4-6',
+    'claude opus 4.6': 'claude-opus-4-6-thinking',
+    'claude opus 4.6 (thinking)': 'claude-opus-4-6-thinking'
+  };
+  
+  const lower = clean.toLowerCase();
+  if (KNOWN_MAP[lower]) return KNOWN_MAP[lower];
+  
+  if (/^[a-zA-Z0-9_\-\.]+$/.test(clean)) {
+    return clean.toLowerCase();
+  }
+  
+  return clean
+    .toLowerCase()
+    .replace(/[\(\)\[\]]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9_\-\.]/g, '');
+}
+
+function formatAgyError(stderr, err) {
+  if (stderr) {
+    const lines = stderr.split('\n').map(l => l.trim()).filter(Boolean);
+    const errLine = lines.find(l => /^error|^fatal/i.test(l));
+    if (errLine) return errLine;
+    return lines[0];
+  }
+  return err && err.message ? err.message.split('\n')[0] : '执行失败';
+}
+
 function auditWithAgy(commandLine, initialReason, config = {}) {
   const agyPath = findAgy();
   if (!agyPath) return null;
@@ -133,8 +174,9 @@ function auditWithAgy(commandLine, initialReason, config = {}) {
     '--print-timeout', '10s'
   ];
 
-  if (config.agyModel && config.agyModel !== 'auto') {
-    args.push('--model', config.agyModel);
+  const modelToUse = normalizeModelId(config.agyModel);
+  if (modelToUse && modelToUse !== 'auto') {
+    args.push('--model', modelToUse);
   }
 
   try {
@@ -172,7 +214,7 @@ function auditWithAgy(commandLine, initialReason, config = {}) {
         reason: '[AGY 未登录] 本机 agy 尚未完成认证，请在终端执行 agy 登录。已安全回退至人工审批。'
       };
     }
-    const cleanErr = stderr ? stderr.split('\n').filter(Boolean).pop() : (err.message || '超时或执行失败');
+    const cleanErr = formatAgyError(stderr, err);
     return {
       decision: 'force_ask',
       reason: `[AGY 审核回退] ${cleanErr}`

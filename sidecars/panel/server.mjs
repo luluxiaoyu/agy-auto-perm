@@ -230,8 +230,51 @@ app.api('/api/toggle-agy', () => {
   });
 }, 'POST');
 
+function normalizeModelId(name) {
+  if (!name || typeof name !== 'string') return 'auto';
+  const clean = name.trim();
+  
+  const KNOWN_MAP = {
+    'gpt-oss 120b (medium)': 'gpt-oss-120b-medium',
+    'gpt-oss-120b (medium)': 'gpt-oss-120b-medium',
+    'gpt-oss 120b': 'gpt-oss-120b-medium',
+    'gemini 3.8 flash (high)': 'gemini-3.8-flash-high',
+    'gemini 3.8 flash (medium)': 'gemini-3.8-flash-medium',
+    'gemini 3.8 flash (low)': 'gemini-3.8-flash-low',
+    'claude sonnet 4.6': 'claude-sonnet-4-6',
+    'claude sonnet 4.6 (thinking)': 'claude-sonnet-4-6',
+    'claude opus 4.6': 'claude-opus-4-6-thinking',
+    'claude opus 4.6 (thinking)': 'claude-opus-4-6-thinking'
+  };
+  
+  const lower = clean.toLowerCase();
+  if (KNOWN_MAP[lower]) return KNOWN_MAP[lower];
+  
+  if (/^[a-zA-Z0-9_\-\.]+$/.test(clean)) {
+    return clean.toLowerCase();
+  }
+  
+  return clean
+    .toLowerCase()
+    .replace(/[\(\)\[\]]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9_\-\.]/g, '');
+}
+
 app.api('/api/set-model', (data) => {
-  const model = data && typeof data.model === 'string' ? data.model.trim() : '';
+  let raw = '';
+  if (data) {
+    if (typeof data.model === 'string') raw = data.model;
+    else if (typeof data === 'string') {
+      try {
+        const p = JSON.parse(data);
+        raw = p.model || data;
+      } catch (e) {
+        raw = data;
+      }
+    }
+  }
+  const model = normalizeModelId(raw);
   if (model) {
     const config = readConfig();
     config.agyModel = model;
