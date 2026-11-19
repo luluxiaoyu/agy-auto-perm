@@ -129,6 +129,7 @@ app.api('/api/status', () => {
   return new Response(JSON.stringify({
     enabled: config.enabled !== false,
     agyAuditEnabled: config.agyAuditEnabled === true,
+    agyModel: config.agyModel || 'auto',
     agyStatus,
     logs
   }), {
@@ -150,6 +151,22 @@ app.api('/api/toggle-agy', () => {
   config.agyAuditEnabled = config.agyAuditEnabled === true ? false : true;
   writeConfig(config);
   return new Response(JSON.stringify({ agyAuditEnabled: config.agyAuditEnabled, status: 'ok' }), {
+    contentType: 'application/json'
+  });
+}, 'POST');
+
+app.api('/api/set-model', (data) => {
+  const model = data && typeof data.model === 'string' ? data.model.trim() : '';
+  if (model) {
+    const config = readConfig();
+    config.agyModel = model;
+    writeConfig(config);
+    return new Response(JSON.stringify({ success: true, agyModel: config.agyModel }), {
+      contentType: 'application/json'
+    });
+  }
+  return new Response(JSON.stringify({ success: false, error: 'Invalid model' }), {
+    status: 400,
     contentType: 'application/json'
   });
 }, 'POST');

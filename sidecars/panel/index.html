@@ -296,6 +296,14 @@
         <span class="slider"></span>
       </label>
     </div>
+    <div class="model-row" id="modelRow" style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+      <span style="font-size: 11.5px; color: var(--text-muted); flex-shrink: 0;">审核模型</span>
+      <select id="modelSelect" onchange="changeModel()" style="background: var(--bg); color: var(--text); border: 1px solid var(--card-border); border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; outline: none;">
+        <option value="auto">auto (自动自适应)</option>
+        <option value="flash">flash (极速响应，推荐)</option>
+        <option value="pro">pro (深度推理，较慢)</option>
+      </select>
+    </div>
     <div class="desc-box" id="agyDescBox">
       正在检测本机 agy CLI 状态...
     </div>
@@ -369,6 +377,11 @@
           }
         }
 
+        const modelSelect = document.getElementById('modelSelect');
+        if (data.agyModel && modelSelect && document.activeElement !== modelSelect) {
+          modelSelect.value = data.agyModel;
+        }
+
         const logContainer = document.getElementById('logList');
         if (Array.isArray(data.logs) && data.logs.length > 0) {
           logContainer.innerHTML = data.logs.map(item => {
@@ -431,6 +444,19 @@
     async function toggleAgy() {
       try {
         await fetch('/api/toggle-agy', { method: 'POST' });
+        await refreshData();
+      } catch (e) {}
+    }
+
+    async function changeModel() {
+      const select = document.getElementById('modelSelect');
+      const val = select.value;
+      try {
+        await fetch('/api/set-model', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: val })
+        });
         await refreshData();
       } catch (e) {}
     }
