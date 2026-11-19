@@ -313,7 +313,7 @@
   <div class="card">
     <div class="logs-header">
       <div class="logs-title">实时审计流水 (最新 30 条)</div>
-      <button onclick="refreshData()" style="background: none; border: 1px solid var(--card-border); color: var(--text-muted); border-radius: 4px; padding: 2px 7px; cursor: pointer; font-size: 11px;">刷新</button>
+      <button onclick="manualRefresh()" style="background: none; border: 1px solid var(--card-border); color: var(--text-muted); border-radius: 4px; padding: 2px 7px; cursor: pointer; font-size: 11px;">刷新</button>
     </div>
     <div class="log-list" id="logList">
       <div class="empty-logs">暂无命令审计记录</div>
@@ -515,13 +515,20 @@
       }
     }
 
+    async function manualRefresh() {
+      try {
+        await fetch('/api/refresh', { method: 'POST' });
+      } catch (e) {}
+      await refreshData();
+    }
+
     function escapeHtml(str) {
       if (!str) return '';
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     refreshData();
-    setInterval(refreshData, 2000);
+    setInterval(refreshData, 3000);
   </script>
 </body>
 </html>

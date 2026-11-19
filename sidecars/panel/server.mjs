@@ -25,12 +25,17 @@ function writeConfig(cfg) {
   } catch (e) {}
 }
 
+let cachedAgyPath = undefined;
 function findAgy() {
+  if (cachedAgyPath !== undefined) return cachedAgyPath;
   const isWin = process.platform === 'win32';
   const cmd = isWin ? 'where agy' : 'which agy';
   try {
-    const out = execSync(cmd, { encoding: 'utf8', timeout: 3000 }).trim().split('\n')[0];
-    if (out && existsSync(out)) return out;
+    const out = execSync(cmd, { encoding: 'utf8', timeout: 3000, windowsHide: true }).trim().split('\n')[0];
+    if (out && existsSync(out)) {
+      cachedAgyPath = out;
+      return cachedAgyPath;
+    }
   } catch (e) {}
 
   const home = process.env.HOME || process.env.USERPROFILE || '';
@@ -46,20 +51,35 @@ function findAgy() {
       ];
 
   for (const c of candidates) {
-    if (existsSync(c)) return c;
+    if (existsSync(c)) {
+      cachedAgyPath = c;
+      return cachedAgyPath;
+    }
   }
+  cachedAgyPath = null;
   return null;
 }
 
-function checkAgyStatus() {
+let cachedAgyStatus = null;
+let lastAgyStatusCheckTime = 0;
+const AGY_STATUS_CACHE_TTL = 60 * 1000; // Cache status for 60s
+
+function checkAgyStatus(force = false) {
+  const now = Date.now();
+  if (!force && cachedAgyStatus && (now - lastAgyStatusCheckTime < AGY_STATUS_CACHE_TTL)) {
+    return cachedAgyStatus;
+  }
+
   const agyPath = findAgy();
   if (!agyPath) {
-    return { installed: false, path: null, version: null, authenticated: false };
+    cachedAgyStatus = { installed: false, path: null, version: null, authenticated: false };
+    lastAgyStatusCheckTime = now;
+    return cachedAgyStatus;
   }
 
   let version = null;
   try {
-    version = execSync(`"${agyPath}" --version`, { encoding: 'utf8', timeout: 3000 }).trim();
+    version = execSync(`"${agyPath}" --version`, { encoding: 'utf8', timeout: 3000, windowsHide: true }).trim();
   } catch (e) {}
 
   let authenticated = false;
@@ -67,6 +87,7 @@ function checkAgyStatus() {
     execSync(`"${agyPath}" -p "ping" --disable-slash-commands --print-timeout 2s`, {
       encoding: 'utf8',
       timeout: 3500,
+      windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
     authenticated = true;
@@ -75,12 +96,14 @@ function checkAgyStatus() {
     authenticated = !stderr.includes('Authentication required');
   }
 
-  return {
+  cachedAgyStatus = {
     installed: true,
     path: agyPath,
     version: version || 'unknown',
     authenticated
   };
+  lastAgyStatusCheckTime = now;
+  return cachedAgyStatus;
 }
 
 function parseAgyModels(raw) {
@@ -126,13 +149,23 @@ function parseAgyModels(raw) {
   return list;
 }
 
-function getAgyModels() {
+let cachedModels = null;
+let lastModelsCheckTime = 0;
+const MODELS_CACHE_TTL = 5 * 60 * 1000; // Cache models for 5 minutes
+
+function getAgyModels(force = false) {
+  const now = Date.now();
+  if (!force && cachedModels && (now - lastModelsCheckTime < MODELS_CACHE_TTL)) {
+    return cachedModels;
+  }
+
   const agyPath = findAgy();
   if (agyPath) {
     try {
       const raw = execSync(`"${agyPath}" models`, {
         encoding: 'utf8',
         timeout: 4000,
+        windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
       });
       const parsed = parseAgyModels(raw);
@@ -140,12 +173,16 @@ function getAgyModels() {
         if (!parsed.some(m => m.id === 'auto')) {
           parsed.unshift({ id: 'auto', name: 'auto (自动自适应)' });
         }
-        return parsed;
+        cachedModels = parsed;
+        lastModelsCheckTime = now;
+        return cachedModels;
       }
     } catch (e) {}
   }
 
-  return [
+  if (cachedModels) return cachedModels;
+
+  const fallback = [
     { id: 'auto', name: 'auto (自动自适应)' },
     { id: 'flash', name: 'flash (极速响应，推荐)' },
     { id: 'pro', name: 'pro (深度推理，较慢)' },
@@ -154,6 +191,9 @@ function getAgyModels() {
     { id: 'gemini-3.8-flash-high', name: 'gemini-3.8-flash-high' },
     { id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6' }
   ];
+  cachedModels = fallback;
+  lastModelsCheckTime = now;
+  return fallback;
 }
 
 function readLogs() {
@@ -285,6 +325,15 @@ app.api('/api/set-model', (data) => {
   }
   return new Response(JSON.stringify({ success: false, error: 'Invalid model' }), {
     status: 400,
+    contentType: 'application/json'
+  });
+}, 'POST');
+
+app.api('/api/refresh', () => {
+  cachedAgyPath = undefined;
+  checkAgyStatus(true);
+  getAgyModels(true);
+  return new Response(JSON.stringify({ status: 'ok' }), {
     contentType: 'application/json'
   });
 }, 'POST');

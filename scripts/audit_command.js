@@ -83,12 +83,17 @@ function loadConfig() {
   return { enabled: true, agyAuditEnabled: false };
 }
 
+let cachedAgyPath = undefined;
 function findAgy() {
+  if (cachedAgyPath !== undefined) return cachedAgyPath;
   const isWin = process.platform === 'win32';
   const cmd = isWin ? 'where agy' : 'which agy';
   try {
-    const out = execSync(cmd, { encoding: 'utf8', timeout: 3000 }).trim().split('\n')[0];
-    if (out && fs.existsSync(out)) return out;
+    const out = execSync(cmd, { encoding: 'utf8', timeout: 3000, windowsHide: true }).trim().split('\n')[0];
+    if (out && fs.existsSync(out)) {
+      cachedAgyPath = out;
+      return cachedAgyPath;
+    }
   } catch (e) {}
 
   const home = process.env.HOME || process.env.USERPROFILE || '';
@@ -104,8 +109,12 @@ function findAgy() {
       ];
 
   for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
+    if (fs.existsSync(c)) {
+      cachedAgyPath = c;
+      return cachedAgyPath;
+    }
   }
+  cachedAgyPath = null;
   return null;
 }
 
@@ -183,6 +192,7 @@ function auditWithAgy(commandLine, initialReason, config = {}) {
     const stdout = execFileSync(agyPath, args, {
       encoding: 'utf8',
       timeout: 12000,
+      windowsHide: true,
       env: {
         ...process.env,
         AGY_AUTO_PERM_SKIP: '1' // Crucial to prevent recursion!
