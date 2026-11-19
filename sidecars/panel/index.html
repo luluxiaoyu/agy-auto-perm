@@ -212,6 +212,7 @@
     }
     .tag-allow { background: var(--success-bg); color: var(--success); }
     .tag-ask { background: var(--warning-bg); color: var(--warning); }
+    .tag-agy { background: rgba(33, 150, 243, 0.15); color: #2196f3; }
     .log-time {
       color: var(--text-muted);
       font-size: 10px;
@@ -285,6 +286,22 @@
   </div>
 
   <div class="card">
+    <div class="switch-row">
+      <div>
+        <div class="switch-label">AGY 智能二次审核</div>
+        <div class="switch-sub" id="agySub">命中规则拦截时，由本机 agy 深度研判；安全则自动放行</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="agyToggle" onchange="toggleAgy()">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="desc-box" id="agyDescBox">
+      正在检测本机 agy CLI 状态...
+    </div>
+  </div>
+
+  <div class="card">
     <div class="logs-header">
       <div class="logs-title">实时审计流水 (最新 30 条)</div>
       <button onclick="refreshData()" style="background: none; border: 1px solid var(--card-border); color: var(--text-muted); border-radius: 4px; padding: 2px 7px; cursor: pointer; font-size: 11px;">刷新</button>
@@ -334,6 +351,24 @@
           sub.textContent = '已暂停自动放行，所有终端命令均将弹窗人工确认';
         }
 
+        const agyToggle = document.getElementById('agyToggle');
+        const agyDescBox = document.getElementById('agyDescBox');
+        if (data.agyStatus) {
+          if (!data.agyStatus.installed) {
+            agyToggle.disabled = true;
+            agyToggle.checked = false;
+            agyDescBox.innerHTML = '<span style="color: var(--warning);">[未检测到 agy CLI]</span> 请先在系统终端中安装 agy，安装后刷新启用。';
+          } else if (!data.agyStatus.authenticated) {
+            agyToggle.disabled = true;
+            agyToggle.checked = false;
+            agyDescBox.innerHTML = '<span style="color: var(--warning);">[已检测到 agy v' + escapeHtml(data.agyStatus.version) + '，但尚未登录]</span> 请在系统终端执行一次 <code>agy</code> 完成网页登录，登录后即可启用。';
+          } else {
+            agyToggle.disabled = false;
+            agyToggle.checked = data.agyAuditEnabled === true;
+            agyDescBox.innerHTML = '<span style="color: var(--success);">[agy 就绪 v' + escapeHtml(data.agyStatus.version) + ']</span> 命中高危正则时自动交由本机 agy 深度研判，若判定安全则自动放行。';
+          }
+        }
+
         const logContainer = document.getElementById('logList');
         if (Array.isArray(data.logs) && data.logs.length > 0) {
           logContainer.innerHTML = data.logs.map(item => {
@@ -359,8 +394,15 @@
               }
             }
 
-            const tagClass = isAllow ? 'tag-allow' : 'tag-ask';
-            const tagText = isAllow ? '放行' : '拦截';
+            let tagClass = isAllow ? 'tag-allow' : 'tag-ask';
+            let tagText = isAllow ? '放行' : '拦截';
+            if (isAllow && reason.includes('[AGY')) {
+              tagClass = 'tag-agy';
+              tagText = 'AGY 放行';
+            } else if (!isAllow && reason.includes('[AGY')) {
+              tagClass = 'tag-ask';
+              tagText = 'AGY 拦截';
+            }
 
             return `
               <div class="log-item">
@@ -382,6 +424,13 @@
     async function togglePerm() {
       try {
         await fetch('/api/toggle', { method: 'POST' });
+        await refreshData();
+      } catch (e) {}
+    }
+
+    async function toggleAgy() {
+      try {
+        await fetch('/api/toggle-agy', { method: 'POST' });
         await refreshData();
       } catch (e) {}
     }

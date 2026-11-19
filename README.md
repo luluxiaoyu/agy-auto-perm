@@ -57,7 +57,7 @@ git clone https://github.com/luluxiaoyu/agy-auto-perm.git ~/.gemini/config/plugi
 ## 拦截规则与自定义
 
 默认拦截的高危指令包括：
-* **磁盘/分区**：`format`, `diskpart`, `Format-Volume`
+* **磁盘/分区**：`format C:`, `diskpart`, `Format-Volume`
 * **批量删除**：`del /s /q`, `rmdir /s /q`, `Remove-Item -Recurse -Force`, `rm -rf`
 * **注册表与系统启动**：`reg add/delete`, `bcdedit`, `vssadmin`, `takeown`, `icacls`
 * **远程管道注入**：`curl ... | bash/powershell`, `Invoke-Expression (iex)`
@@ -65,6 +65,17 @@ git clone https://github.com/luluxiaoyu/agy-auto-perm.git ~/.gemini/config/plugi
 * **强制终止/关机**：`taskkill /f`, `kill -9`, `shutdown`
 
 若需添加自定义黑名单规则，直接编辑 `config.json` 中的 `customRiskPatterns` 即可。
+
+---
+
+## AGY 智能二次审核（可选功能）
+
+针对误报或边缘高危指令，插件支持调用本机 `agy` 进行智能裁决：
+1. **0ms 极速放行**：98% 的常规指令仍由正则毫秒级静默放行，零延迟；
+2. **AI 二次复核**：当指令命中拦截规则时，插件自动唤起本机 `agy` 结合语义上下文进行安全复审；
+3. **自动免除误报**：若 `agy` 研判为安全（如只读管道、安全脚本），则自动放行并记录中文理由；若确属破坏性指令，则弹窗人工确认；
+4. **防递归死锁保护**：内置 `AGY_AUTO_PERM_SKIP` 环境变量阻断，防止子进程递归嵌套；
+5. **一键开关与状态检测**：在控制面板中实时检测本机 `agy` 版本与登录状态，一键开关。
 
 ---
 

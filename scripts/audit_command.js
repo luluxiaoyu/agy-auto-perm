@@ -6,10 +6,12 @@
  * Audits commands before execution:
  * - Safe commands: outputs {"decision": "allow", "allowTool": true, "permissionOverrides": [...]} -> runs automatically without prompt.
  * - Dangerous/destructive commands: outputs {"decision": "force_ask"} -> forces user confirmation regardless of mode.
+ * - Optional AGY Smart Audit: when risk rule is triggered, delegates to local agy CLI for second-opinion semantic audit.
  */
 
 const fs = require('fs');
 const path = require('path');
+const { execSync, execFileSync } = require('child_process');
 
 // Default High-Risk Patterns that MUST require manual approval
 const DEFAULT_RISK_PATTERNS = [
@@ -78,7 +80,97 @@ function loadConfig() {
       return JSON.parse(fs.readFileSync(configPath, 'utf8'));
     }
   } catch (e) {}
-  return { enabled: true };
+  return { enabled: true, agyAuditEnabled: false };
+}
+
+function findAgy() {
+  const isWin = process.platform === 'win32';
+  const cmd = isWin ? 'where agy' : 'which agy';
+  try {
+    const out = execSync(cmd, { encoding: 'utf8', timeout: 3000 }).trim().split('\n')[0];
+    if (out && fs.existsSync(out)) return out;
+  } catch (e) {}
+
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const candidates = isWin
+    ? [
+        path.join(home, '.local', 'bin', 'agy.exe'),
+        path.join(home, 'AppData', 'Local', 'Programs', 'agy', 'agy.exe')
+      ]
+    : [
+        path.join(home, '.local', 'bin', 'agy'),
+        '/usr/local/bin/agy',
+        '/opt/homebrew/bin/agy'
+      ];
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+function auditWithAgy(commandLine, initialReason) {
+  const agyPath = findAgy();
+  if (!agyPath) return null;
+
+  const prompt = [
+    'You are a strict security judge for a developer tool.',
+    'A shell command triggered an initial risk rule and needs secondary audit.',
+    `COMMAND: ${commandLine}`,
+    `FLAGGED AS: ${initialReason}`,
+    '',
+    'Task: Is this command actually safe to run automatically (e.g. read-only, harmless query, formatting, routine git/npm/cargo)? Or is it a truly dangerous destructive operation (e.g. deleting files outside temp, formatting disks, dropping databases, modifying OS security)?',
+    '',
+    'Output format strictly (no extra text):',
+    'DECISION: [ALLOW or ASK]',
+    'REASON: [One sentence in Chinese explaining why]'
+  ].join('\n');
+
+  try {
+    const stdout = execFileSync(agyPath, [
+      '-p', prompt,
+      '--disable-slash-commands',
+      '--dangerously-skip-permissions',
+      '--print-timeout', '10s'
+    ], {
+      encoding: 'utf8',
+      timeout: 12000,
+      env: {
+        ...process.env,
+        AGY_AUTO_PERM_SKIP: '1' // Crucial to prevent recursion!
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    const allowMatch = /DECISION:\s*(ALLOW|放行)/i.test(stdout);
+    const askMatch = /DECISION:\s*(ASK|拦截|用户审核|审核)/i.test(stdout);
+    const reasonMatch = stdout.match(/REASON:\s*(.+)/i);
+    const agyReason = reasonMatch ? reasonMatch[1].trim() : '';
+
+    if (allowMatch && !askMatch) {
+      return {
+        decision: 'allow',
+        reason: `[AGY 智能放行] ${agyReason || '经由本机 AGY 深度语义审核，判定该操作安全无害，自动放行。'}`
+      };
+    } else {
+      return {
+        decision: 'force_ask',
+        reason: `[AGY 建议审核] ${agyReason || initialReason}`
+      };
+    }
+  } catch (err) {
+    const stderr = err.stderr ? err.stderr.toString() : '';
+    if (stderr.includes('Authentication required')) {
+      return {
+        decision: 'force_ask',
+        reason: '[AGY 未登录] 本机 agy 尚未完成认证，请在终端执行 agy 登录。已安全回退至人工审批。'
+      };
+    }
+    return {
+      decision: 'force_ask',
+      reason: `[AGY 审核回退] AGY 仲裁超时或异常: ${err.message}`
+    };
+  }
 }
 
 function audit(commandLine, config) {
@@ -86,29 +178,60 @@ function audit(commandLine, config) {
     return { decision: 'allow', allowTool: true, reason: 'Empty command line' };
   }
 
+  let ruleTriggered = null;
+
   // Check custom blacklist first
   if (Array.isArray(config.customRiskPatterns)) {
     for (const item of config.customRiskPatterns) {
       try {
         const regex = new RegExp(item.pattern, 'i');
         if (regex.test(commandLine)) {
-          return {
-            decision: 'force_ask',
-            reason: `[Auto-Perm] 命中自定义敏感规则: ${item.desc || item.pattern}`
-          };
+          ruleTriggered = `[Auto-Perm] 命中自定义敏感规则: ${item.desc || item.pattern}`;
+          break;
         }
       } catch (err) {}
     }
   }
 
   // Check default high risk patterns
-  for (const item of DEFAULT_RISK_PATTERNS) {
-    if (item.pattern.test(commandLine)) {
-      return {
-        decision: 'force_ask',
-        reason: `[Auto-Perm 安全防护] 检测到高危操作 (${item.desc})，在非沙盒 Windows 环境下强制人工审批。`
-      };
+  if (!ruleTriggered) {
+    for (const item of DEFAULT_RISK_PATTERNS) {
+      if (item.pattern.test(commandLine)) {
+        ruleTriggered = `[Auto-Perm 安全防护] 检测到高危操作 (${item.desc})，在非沙盒 Windows 环境下需要审核。`;
+        break;
+      }
     }
+  }
+
+  // If a risk rule was triggered, check if AGY secondary audit is enabled
+  if (ruleTriggered) {
+    if (config.agyAuditEnabled === true) {
+      const agyResult = auditWithAgy(commandLine, ruleTriggered);
+      if (agyResult) {
+        if (agyResult.decision === 'allow') {
+          const cmdTrim = commandLine.trim();
+          const firstWord = cmdTrim.split(/\s+/)[0];
+          return {
+            decision: 'allow',
+            allowTool: true,
+            permissionOverrides: [
+              `command(${cmdTrim})`,
+              `command(${firstWord})`,
+              'command(*)'
+            ],
+            reason: agyResult.reason
+          };
+        }
+        return {
+          decision: 'force_ask',
+          reason: agyResult.reason
+        };
+      }
+    }
+    return {
+      decision: 'force_ask',
+      reason: ruleTriggered
+    };
   }
 
   // If safe, auto-allow with permission grant overrides
@@ -127,6 +250,12 @@ function audit(commandLine, config) {
 }
 
 function main() {
+  // Anti-recursion safeguard for agy sub-executions
+  if (process.env.AGY_AUTO_PERM_SKIP === '1') {
+    console.log(JSON.stringify({ decision: 'allow', allowTool: true }));
+    return;
+  }
+
   let inputData = '';
   process.stdin.setEncoding('utf8');
 

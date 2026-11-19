@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 import { SidecarApp, Response } from 'sidecar_sdk';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -15,13 +16,71 @@ function readConfig() {
       return JSON.parse(readFileSync(configFile, 'utf8'));
     }
   } catch (e) {}
-  return { enabled: true };
+  return { enabled: true, agyAuditEnabled: false };
 }
 
 function writeConfig(cfg) {
   try {
     writeFileSync(configFile, JSON.stringify(cfg, null, 2), 'utf8');
   } catch (e) {}
+}
+
+function findAgy() {
+  const isWin = process.platform === 'win32';
+  const cmd = isWin ? 'where agy' : 'which agy';
+  try {
+    const out = execSync(cmd, { encoding: 'utf8', timeout: 3000 }).trim().split('\n')[0];
+    if (out && existsSync(out)) return out;
+  } catch (e) {}
+
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const candidates = isWin
+    ? [
+        join(home, '.local', 'bin', 'agy.exe'),
+        join(home, 'AppData', 'Local', 'Programs', 'agy', 'agy.exe')
+      ]
+    : [
+        join(home, '.local', 'bin', 'agy'),
+        '/usr/local/bin/agy',
+        '/opt/homebrew/bin/agy'
+      ];
+
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return null;
+}
+
+function checkAgyStatus() {
+  const agyPath = findAgy();
+  if (!agyPath) {
+    return { installed: false, path: null, version: null, authenticated: false };
+  }
+
+  let version = null;
+  try {
+    version = execSync(`"${agyPath}" --version`, { encoding: 'utf8', timeout: 3000 }).trim();
+  } catch (e) {}
+
+  let authenticated = false;
+  try {
+    execSync(`"${agyPath}" -p "ping" --disable-slash-commands --print-timeout 2s`, {
+      encoding: 'utf8',
+      timeout: 3500,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    authenticated = true;
+  } catch (err) {
+    const stderr = err.stderr ? err.stderr.toString() : '';
+    authenticated = !stderr.includes('Authentication required');
+  }
+
+  return {
+    installed: true,
+    path: agyPath,
+    version: version || 'unknown',
+    authenticated
+  };
 }
 
 function readLogs() {
@@ -66,7 +125,13 @@ app.page('/', () => readFileSync(htmlFile, 'utf8'));
 app.api('/api/status', () => {
   const config = readConfig();
   const logs = readLogs();
-  return new Response(JSON.stringify({ enabled: config.enabled !== false, logs }), {
+  const agyStatus = checkAgyStatus();
+  return new Response(JSON.stringify({
+    enabled: config.enabled !== false,
+    agyAuditEnabled: config.agyAuditEnabled === true,
+    agyStatus,
+    logs
+  }), {
     contentType: 'application/json'
   });
 }, 'GET');
@@ -76,6 +141,15 @@ app.api('/api/toggle', () => {
   config.enabled = config.enabled === false ? true : false;
   writeConfig(config);
   return new Response(JSON.stringify({ enabled: config.enabled, status: 'ok' }), {
+    contentType: 'application/json'
+  });
+}, 'POST');
+
+app.api('/api/toggle-agy', () => {
+  const config = readConfig();
+  config.agyAuditEnabled = config.agyAuditEnabled === true ? false : true;
+  writeConfig(config);
+  return new Response(JSON.stringify({ agyAuditEnabled: config.agyAuditEnabled, status: 'ok' }), {
     contentType: 'application/json'
   });
 }, 'POST');
