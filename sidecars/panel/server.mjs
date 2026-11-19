@@ -83,6 +83,79 @@ function checkAgyStatus() {
   };
 }
 
+function parseAgyModels(raw) {
+  if (!raw || typeof raw !== 'string') return [];
+  const lines = raw.split('\n');
+  const list = [];
+  const seen = new Set();
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    if (/^(error|please sign in|usage|available|model\s+desc)/i.test(line)) continue;
+    if (/^[=\-─_]+$/.test(line)) continue;
+
+    line = line.replace(/^[\*\-\•\>]\s*/, '').trim();
+
+    let modelId = '';
+    let label = '';
+
+    if (line.includes(':')) {
+      const parts = line.split(':');
+      modelId = parts[0].trim();
+      label = parts.slice(1).join(':').trim();
+    } else if (line.includes('\t') || /\s{2,}/.test(line)) {
+      const parts = line.split(/\t|\s{2,}/);
+      modelId = parts[0].trim();
+      label = parts.slice(1).join(' ').trim();
+    } else {
+      modelId = line.split(/\s+/)[0].trim();
+    }
+
+    modelId = modelId.replace(/[\(\)\[\],]$/g, '').trim();
+
+    if (modelId && !seen.has(modelId) && /^[a-zA-Z0-9_\-\.]+$/.test(modelId)) {
+      seen.add(modelId);
+      list.push({
+        id: modelId,
+        name: label ? `${modelId} (${label})` : modelId
+      });
+    }
+  }
+
+  return list;
+}
+
+function getAgyModels() {
+  const agyPath = findAgy();
+  if (agyPath) {
+    try {
+      const raw = execSync(`"${agyPath}" models`, {
+        encoding: 'utf8',
+        timeout: 4000,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      const parsed = parseAgyModels(raw);
+      if (parsed.length > 0) {
+        if (!parsed.some(m => m.id === 'auto')) {
+          parsed.unshift({ id: 'auto', name: 'auto (自动自适应)' });
+        }
+        return parsed;
+      }
+    } catch (e) {}
+  }
+
+  return [
+    { id: 'auto', name: 'auto (自动自适应)' },
+    { id: 'flash', name: 'flash (极速响应，推荐)' },
+    { id: 'pro', name: 'pro (深度推理，较慢)' },
+    { id: 'gemini-3.8-flash-low', name: 'gemini-3.8-flash-low' },
+    { id: 'gemini-3.8-flash-medium', name: 'gemini-3.8-flash-medium' },
+    { id: 'gemini-3.8-flash-high', name: 'gemini-3.8-flash-high' },
+    { id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6' }
+  ];
+}
+
 function readLogs() {
   try {
     if (existsSync(logFile)) {
@@ -126,10 +199,12 @@ app.api('/api/status', () => {
   const config = readConfig();
   const logs = readLogs();
   const agyStatus = checkAgyStatus();
+  const availableModels = getAgyModels();
   return new Response(JSON.stringify({
     enabled: config.enabled !== false,
     agyAuditEnabled: config.agyAuditEnabled === true,
     agyModel: config.agyModel || 'auto',
+    availableModels,
     agyStatus,
     logs
   }), {

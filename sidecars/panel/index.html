@@ -298,11 +298,12 @@
     </div>
     <div class="model-row" id="modelRow" style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
       <span style="font-size: 11.5px; color: var(--text-muted); flex-shrink: 0;">审核模型</span>
-      <select id="modelSelect" onchange="changeModel()" style="background: var(--bg); color: var(--text); border: 1px solid var(--card-border); border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; outline: none;">
-        <option value="auto">auto (自动自适应)</option>
-        <option value="flash">flash (极速响应，推荐)</option>
-        <option value="pro">pro (深度推理，较慢)</option>
-      </select>
+      <div style="display: flex; align-items: center; gap: 4px; max-width: 72%;">
+        <select id="modelSelect" onchange="changeModel(this.value)" style="background: var(--bg); color: var(--text); border: 1px solid var(--card-border); border-radius: 4px; padding: 3px 6px; font-size: 11px; cursor: pointer; outline: none; max-width: 170px; text-overflow: ellipsis;">
+          <option value="auto">auto (自动自适应)</option>
+        </select>
+        <button onclick="promptCustomModel()" title="手动指定任意模型名称" style="background: none; border: 1px solid var(--card-border); color: var(--text-muted); border-radius: 4px; padding: 2px 6px; font-size: 10.5px; cursor: pointer; flex-shrink: 0;">自定义</button>
+      </div>
     </div>
     <div class="desc-box" id="agyDescBox">
       正在检测本机 agy CLI 状态...
@@ -377,10 +378,7 @@
           }
         }
 
-        const modelSelect = document.getElementById('modelSelect');
-        if (data.agyModel && modelSelect && document.activeElement !== modelSelect) {
-          modelSelect.value = data.agyModel;
-        }
+        updateModelOptions(data.availableModels, data.agyModel || 'auto');
 
         const logContainer = document.getElementById('logList');
         if (Array.isArray(data.logs) && data.logs.length > 0) {
@@ -448,9 +446,46 @@
       } catch (e) {}
     }
 
-    async function changeModel() {
+    let lastRenderedModelsJson = '';
+
+    function updateModelOptions(availableModels, currentModel) {
       const select = document.getElementById('modelSelect');
-      const val = select.value;
+      if (!select || document.activeElement === select) return;
+
+      const models = Array.isArray(availableModels) && availableModels.length > 0
+        ? availableModels
+        : [
+            { id: 'auto', name: 'auto (自动自适应)' },
+            { id: 'flash', name: 'flash (极速响应，推荐)' },
+            { id: 'pro', name: 'pro (深度推理，较慢)' }
+          ];
+
+      const modelsJson = JSON.stringify(models);
+      if (modelsJson !== lastRenderedModelsJson || !select.options.length) {
+        lastRenderedModelsJson = modelsJson;
+        select.innerHTML = models.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name || m.id)}</option>`).join('');
+      }
+
+      if (currentModel) {
+        let found = false;
+        for (let i = 0; i < select.options.length; i++) {
+          if (select.options[i].value === currentModel) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          const opt = document.createElement('option');
+          opt.value = currentModel;
+          opt.textContent = `${currentModel} (自定义)`;
+          select.appendChild(opt);
+        }
+        select.value = currentModel;
+      }
+    }
+
+    async function changeModel(val) {
+      if (!val) return;
       try {
         await fetch('/api/set-model', {
           method: 'POST',
@@ -459,6 +494,14 @@
         });
         await refreshData();
       } catch (e) {}
+    }
+
+    async function promptCustomModel() {
+      const current = document.getElementById('modelSelect')?.value || '';
+      const custom = window.prompt('请输入要用于审核的 agy 模型标识（例如 gemini-3.8-flash-low, claude-sonnet-4-6 等）：', current);
+      if (custom && custom.trim()) {
+        await changeModel(custom.trim());
+      }
     }
 
     function escapeHtml(str) {
