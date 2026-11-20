@@ -366,15 +366,12 @@
           if (!data.agyStatus.installed) {
             agyToggle.disabled = true;
             agyToggle.checked = false;
-            agyDescBox.innerHTML = '<span style="color: var(--warning);">[未检测到 agy CLI]</span> 请先在系统终端中安装 agy，安装后刷新启用。';
-          } else if (!data.agyStatus.authenticated) {
-            agyToggle.disabled = true;
-            agyToggle.checked = false;
-            agyDescBox.innerHTML = '<span style="color: var(--warning);">[已检测到 agy v' + escapeHtml(data.agyStatus.version) + '，但尚未登录]</span> 请在系统终端执行一次 <code>agy</code> 完成网页登录，登录后即可启用。';
+            agyDescBox.innerHTML = '<span style="color: var(--warning);">[未检测到 agy CLI]</span> 请在终端安装 agy，安装后点击刷新启用。';
           } else {
             agyToggle.disabled = false;
             agyToggle.checked = data.agyAuditEnabled === true;
-            agyDescBox.innerHTML = '<span style="color: var(--success);">[agy 就绪 v' + escapeHtml(data.agyStatus.version) + ']</span> 命中高危正则时自动交由本机 agy 深度研判，若判定安全则自动放行。';
+            const verStr = data.agyStatus.version && data.agyStatus.version !== 'installed' ? ' v' + escapeHtml(data.agyStatus.version) : '';
+            agyDescBox.innerHTML = '<span style="color: var(--success);">[agy 就绪' + verStr + ']</span> 命中高危正则时自动交由本机 agy 深度研判，若判定安全则自动放行。';
           }
         }
 
@@ -528,7 +525,7 @@
     }
 
     refreshData();
-    setInterval(refreshData, 3000);
+    setInterval(refreshData, 4000);
   </script>
 </body>
 </html>

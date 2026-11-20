@@ -11,7 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync, execFileSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 // Default High-Risk Patterns that MUST require manual approval
 const DEFAULT_RISK_PATTERNS = [
@@ -87,20 +87,14 @@ let cachedAgyPath = undefined;
 function findAgy() {
   if (cachedAgyPath !== undefined) return cachedAgyPath;
   const isWin = process.platform === 'win32';
-  const cmd = isWin ? 'where agy' : 'which agy';
-  try {
-    const out = execSync(cmd, { encoding: 'utf8', timeout: 3000, windowsHide: true }).trim().split('\n')[0];
-    if (out && fs.existsSync(out)) {
-      cachedAgyPath = out;
-      return cachedAgyPath;
-    }
-  } catch (e) {}
-
   const home = process.env.HOME || process.env.USERPROFILE || '';
+  
+  // 1. Direct filesystem check for known paths (0 child processes, 0 window flash, 0ms)
   const candidates = isWin
     ? [
-        path.join(home, '.local', 'bin', 'agy.exe'),
-        path.join(home, 'AppData', 'Local', 'Programs', 'agy', 'agy.exe')
+        path.join(home, 'AppData', 'Local', 'agy', 'bin', 'agy.exe'),
+        path.join(home, 'AppData', 'Local', 'Programs', 'agy', 'agy.exe'),
+        path.join(home, '.local', 'bin', 'agy.exe')
       ]
     : [
         path.join(home, '.local', 'bin', 'agy'),
@@ -114,6 +108,22 @@ function findAgy() {
       return cachedAgyPath;
     }
   }
+
+  // 2. Fallback to where/which using execFileSync (avoid cmd.exe shell wrapper)
+  try {
+    const cmd = isWin ? 'where.exe' : 'which';
+    const out = execFileSync(cmd, ['agy'], {
+      encoding: 'utf8',
+      timeout: 2000,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    }).trim().split('\n')[0].trim();
+    if (out && fs.existsSync(out)) {
+      cachedAgyPath = out;
+      return cachedAgyPath;
+    }
+  } catch (e) {}
+
   cachedAgyPath = null;
   return null;
 }
@@ -152,11 +162,18 @@ function normalizeModelId(name) {
 function formatAgyError(stderr, err) {
   if (stderr) {
     const lines = stderr.split('\n').map(l => l.trim()).filter(Boolean);
-    const errLine = lines.find(l => /^error|^fatal/i.test(l));
-    if (errLine) return errLine;
-    return lines[0];
+    const errLine = lines.find(l => /^(error|fatal)/i.test(l));
+    if (errLine) return errLine.slice(0, 200);
+    return lines[0].slice(0, 200);
   }
-  return err && err.message ? err.message.split('\n')[0] : '执行失败';
+  if (err && err.message) {
+    const first = err.message.split('\n')[0];
+    if (first.includes('ETIMEDOUT') || first.includes('timed out')) {
+      return '网络超时或离线';
+    }
+    return first.slice(0, 150);
+  }
+  return '执行失败';
 }
 
 function auditWithAgy(commandLine, initialReason, config = {}) {
@@ -180,7 +197,7 @@ function auditWithAgy(commandLine, initialReason, config = {}) {
     '-p', prompt,
     '--disable-slash-commands',
     '--dangerously-skip-permissions',
-    '--print-timeout', '10s'
+    '--print-timeout', '6s'
   ];
 
   const modelToUse = normalizeModelId(config.agyModel);
@@ -191,11 +208,14 @@ function auditWithAgy(commandLine, initialReason, config = {}) {
   try {
     const stdout = execFileSync(agyPath, args, {
       encoding: 'utf8',
-      timeout: 12000,
+      timeout: 8000,
       windowsHide: true,
       env: {
         ...process.env,
-        AGY_AUTO_PERM_SKIP: '1' // Crucial to prevent recursion!
+        AGY_AUTO_PERM_SKIP: '1', // Crucial to prevent recursion
+        CI: 'true',              // Crucial: disables interactive prompts and browser launches
+        BROWSER: 'none',         // Crucial: forbids opening default browser
+        NO_COLOR: '1'
       },
       stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -218,10 +238,16 @@ function auditWithAgy(commandLine, initialReason, config = {}) {
     }
   } catch (err) {
     const stderr = err.stderr ? err.stderr.toString().trim() : '';
-    if (stderr.includes('Authentication required')) {
+    if (stderr.includes('Authentication required') || stderr.includes('Please sign in')) {
       return {
         decision: 'force_ask',
         reason: '[AGY 未登录] 本机 agy 尚未完成认证，请在终端执行 agy 登录。已安全回退至人工审批。'
+      };
+    }
+    if (err.code === 'ETIMEDOUT' || (err.message && (err.message.includes('ETIMEDOUT') || err.message.includes('timed out')))) {
+      return {
+        decision: 'force_ask',
+        reason: '[AGY 审核超时] 网络不可用或响应超时，已安全回退至人工确认。'
       };
     }
     const cleanErr = formatAgyError(stderr, err);

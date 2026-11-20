@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { SidecarApp, Response } from 'sidecar_sdk';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -29,20 +29,14 @@ let cachedAgyPath = undefined;
 function findAgy() {
   if (cachedAgyPath !== undefined) return cachedAgyPath;
   const isWin = process.platform === 'win32';
-  const cmd = isWin ? 'where agy' : 'which agy';
-  try {
-    const out = execSync(cmd, { encoding: 'utf8', timeout: 3000, windowsHide: true }).trim().split('\n')[0];
-    if (out && existsSync(out)) {
-      cachedAgyPath = out;
-      return cachedAgyPath;
-    }
-  } catch (e) {}
-
   const home = process.env.HOME || process.env.USERPROFILE || '';
+  
+  // 1. Check known file paths directly (0 subprocesses, 0 window flash, 0ms)
   const candidates = isWin
     ? [
-        join(home, '.local', 'bin', 'agy.exe'),
-        join(home, 'AppData', 'Local', 'Programs', 'agy', 'agy.exe')
+        join(home, 'AppData', 'Local', 'agy', 'bin', 'agy.exe'),
+        join(home, 'AppData', 'Local', 'Programs', 'agy', 'agy.exe'),
+        join(home, '.local', 'bin', 'agy.exe')
       ]
     : [
         join(home, '.local', 'bin', 'agy'),
@@ -56,54 +50,56 @@ function findAgy() {
       return cachedAgyPath;
     }
   }
+
+  // 2. Only fallback to where/which once if static candidates not found
+  try {
+    const cmd = isWin ? 'where.exe' : 'which';
+    const out = execFileSync(cmd, ['agy'], {
+      encoding: 'utf8',
+      timeout: 2000,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    }).trim().split('\n')[0].trim();
+    if (out && existsSync(out)) {
+      cachedAgyPath = out;
+      return cachedAgyPath;
+    }
+  } catch (e) {}
+
   cachedAgyPath = null;
   return null;
 }
 
-let cachedAgyStatus = null;
-let lastAgyStatusCheckTime = 0;
-const AGY_STATUS_CACHE_TTL = 60 * 1000; // Cache status for 60s
+let cachedVersion = null;
 
 function checkAgyStatus(force = false) {
-  const now = Date.now();
-  if (!force && cachedAgyStatus && (now - lastAgyStatusCheckTime < AGY_STATUS_CACHE_TTL)) {
-    return cachedAgyStatus;
-  }
-
   const agyPath = findAgy();
   if (!agyPath) {
-    cachedAgyStatus = { installed: false, path: null, version: null, authenticated: false };
-    lastAgyStatusCheckTime = now;
-    return cachedAgyStatus;
+    return { installed: false, path: null, version: null, authenticated: false };
   }
 
-  let version = null;
-  try {
-    version = execSync(`"${agyPath}" --version`, { encoding: 'utf8', timeout: 3000, windowsHide: true }).trim();
-  } catch (e) {}
-
-  let authenticated = false;
-  try {
-    execSync(`"${agyPath}" -p "ping" --disable-slash-commands --print-timeout 2s`, {
-      encoding: 'utf8',
-      timeout: 3500,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-    authenticated = true;
-  } catch (err) {
-    const stderr = err.stderr ? err.stderr.toString() : '';
-    authenticated = !stderr.includes('Authentication required');
+  // Only query version once or on explicit user manual refresh
+  if (force || !cachedVersion) {
+    try {
+      cachedVersion = execFileSync(agyPath, ['--version'], {
+        encoding: 'utf8',
+        timeout: 2000,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      }).trim();
+    } catch (e) {
+      cachedVersion = 'installed';
+    }
   }
 
-  cachedAgyStatus = {
+  // NOTE: Never send prompt pings to cloud models in background!
+  // It consumes user token quota, causes cmd windows, and triggers browser popups when offline.
+  return {
     installed: true,
     path: agyPath,
-    version: version || 'unknown',
-    authenticated
+    version: cachedVersion || 'installed',
+    authenticated: true
   };
-  lastAgyStatusCheckTime = now;
-  return cachedAgyStatus;
 }
 
 function parseAgyModels(raw) {
@@ -149,22 +145,30 @@ function parseAgyModels(raw) {
   return list;
 }
 
-let cachedModels = null;
-let lastModelsCheckTime = 0;
-const MODELS_CACHE_TTL = 5 * 60 * 1000; // Cache models for 5 minutes
+const DEFAULT_MODELS = [
+  { id: 'auto', name: 'auto (自动自适应)' },
+  { id: 'flash', name: 'flash (极速响应，推荐)' },
+  { id: 'pro', name: 'pro (深度推理，较慢)' },
+  { id: 'gemini-3.8-flash-low', name: 'gemini-3.8-flash-low' },
+  { id: 'gemini-3.8-flash-medium', name: 'gemini-3.8-flash-medium' },
+  { id: 'gemini-3.8-flash-high', name: 'gemini-3.8-flash-high' },
+  { id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6' },
+  { id: 'gpt-oss-120b-medium', name: 'gpt-oss-120b-medium' }
+];
+
+let cachedModels = DEFAULT_MODELS;
 
 function getAgyModels(force = false) {
-  const now = Date.now();
-  if (!force && cachedModels && (now - lastModelsCheckTime < MODELS_CACHE_TTL)) {
+  if (!force) {
     return cachedModels;
   }
 
   const agyPath = findAgy();
   if (agyPath) {
     try {
-      const raw = execSync(`"${agyPath}" models`, {
+      const raw = execFileSync(agyPath, ['models'], {
         encoding: 'utf8',
-        timeout: 4000,
+        timeout: 3000,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
       });
@@ -174,26 +178,12 @@ function getAgyModels(force = false) {
           parsed.unshift({ id: 'auto', name: 'auto (自动自适应)' });
         }
         cachedModels = parsed;
-        lastModelsCheckTime = now;
         return cachedModels;
       }
     } catch (e) {}
   }
 
-  if (cachedModels) return cachedModels;
-
-  const fallback = [
-    { id: 'auto', name: 'auto (自动自适应)' },
-    { id: 'flash', name: 'flash (极速响应，推荐)' },
-    { id: 'pro', name: 'pro (深度推理，较慢)' },
-    { id: 'gemini-3.8-flash-low', name: 'gemini-3.8-flash-low' },
-    { id: 'gemini-3.8-flash-medium', name: 'gemini-3.8-flash-medium' },
-    { id: 'gemini-3.8-flash-high', name: 'gemini-3.8-flash-high' },
-    { id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6' }
-  ];
-  cachedModels = fallback;
-  lastModelsCheckTime = now;
-  return fallback;
+  return cachedModels;
 }
 
 function readLogs() {

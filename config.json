@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "agyAuditEnabled": false,
+  "agyAuditEnabled": true,
   "description": "Windows pre-24H2 Auto 模式平替审核配置",
   "customRiskPatterns": [
     {
